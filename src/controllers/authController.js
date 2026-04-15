@@ -1,8 +1,49 @@
 const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// @desc      Google OAuth login/signup
+// @route     POST /api/auth/google
+// @access    Public
+exports.googleAuth = asyncHandler(async (req, res, next) => {
+  const { credential } = req.body;
+  if (!credential) return next(new ErrorResponse('Missing Google credential', 400));
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    return next(new ErrorResponse('Invalid Google token', 401));
+  }
+
+  const { sub: googleId, email, name, picture } = payload;
+  if (!email) return next(new ErrorResponse('Google account has no email', 400));
+
+  let user = await User.findOne({ email });
+  if (!user) {
+    user = await User.create({
+      name: name || email.split('@')[0],
+      email,
+      googleId,
+      avatar: picture || '',
+    });
+  } else if (!user.googleId) {
+    user.googleId = googleId;
+    if (picture && !user.avatar) user.avatar = picture;
+    await user.save();
+  }
+
+  sendTokenResponse(user, 200, res);
+});
 
 // @desc      Register user
 // @route     POST /api/auth/register

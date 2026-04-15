@@ -7,7 +7,8 @@ const {
   forgotPassword,
   verifyOTP,
   resetPassword,
-  resendOTP
+  resendOTP,
+  googleAuth
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -99,6 +100,7 @@ router.post('/register', register);
  *         description: Invalid credentials
  */
 router.post('/login', login);
+router.post('/google', googleAuth);
 
 /**
  * @swagger

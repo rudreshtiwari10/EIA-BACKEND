@@ -49,9 +49,12 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Please add a password'],
     minlength: 6,
     select: false
+  },
+  googleId: {
+    type: String,
+    default: null
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
@@ -66,7 +69,7 @@ const UserSchema = new mongoose.Schema({
 
 // Encrypt password using bcrypt
 UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password') || !this.password) {
     return next();
   }
 

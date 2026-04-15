@@ -26,6 +26,7 @@ const swaggerJsDoc = require('swagger-jsdoc');
 const path = require('path');
 const islandRoutes = require('./routes/islandRoutes');
 const authRoutes = require('./routes/authRoutes');
+const postRoutes = require('./routes/postRoutes');
 const errorHandler = require('./middleware/error');
 
 const app = express();
@@ -54,7 +55,7 @@ const authLimiter = rateLimit({
 });
 
 // Global Middlewares
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
@@ -62,6 +63,7 @@ app.use(cors({
 app.use(morgan('tiny'));
 app.use(express.json());
 app.use(mongoSanitize()); // Prevent NoSQL injection
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Documentation Route
 app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerDocs));
@@ -74,6 +76,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/islands', islandRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/posts', postRoutes);
 
 // 404 Handler (for undefined routes)
 app.use((req, res, next) => {
