@@ -27,6 +27,7 @@ const path = require('path');
 const islandRoutes = require('./routes/islandRoutes');
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
+const plannerRoutes = require('./routes/plannerRoutes');
 const errorHandler = require('./middleware/error');
 
 const app = express();
@@ -88,6 +89,7 @@ app.get('/health', (req, res) => {
 app.use('/api/islands', islandRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/planner', plannerRoutes);
 
 // 404 Handler (for undefined routes)
 app.use((req, res, next) => {
