@@ -188,6 +188,14 @@ exports.updateProfile = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // dateOfBirth: '' is invalid for a Date cast; normalize to null
+  if (fieldsToUpdate.dateOfBirth === '' || fieldsToUpdate.dateOfBirth === undefined) {
+    delete fieldsToUpdate.dateOfBirth;
+  }
+  if (fieldsToUpdate.dateOfBirth === null) {
+    fieldsToUpdate.dateOfBirth = null;
+  }
+
   const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
     new: true,
     runValidators: true

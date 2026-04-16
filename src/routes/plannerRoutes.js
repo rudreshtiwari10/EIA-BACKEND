@@ -8,13 +8,16 @@ const {
   searchHotel,
   getIslandFeatureData,
 } = require('../controllers/plannerController');
+const { protect } = require('../middleware/auth');
 
-// All planner routes are public (guests can plan too)
-router.post('/routes', getRoutes);
-router.post('/accommodations', getAccommodations);
-router.post('/activities', getActivities);
-router.post('/finalize', finalize);
-router.post('/search-hotel', searchHotel);
+// Public — anyone browsing an island can see its hotels/restaurants/etc.
 router.post('/feature', getIslandFeatureData);
+
+// Trip planning requires a logged-in user
+router.post('/routes', protect, getRoutes);
+router.post('/accommodations', protect, getAccommodations);
+router.post('/activities', protect, getActivities);
+router.post('/finalize', protect, finalize);
+router.post('/search-hotel', protect, searchHotel);
 
 module.exports = router;

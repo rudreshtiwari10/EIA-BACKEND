@@ -1,5 +1,6 @@
 const Island = require('../models/Island');
 const Trip = require('../models/Trip');
+const IslandFeatureCache = require('../models/IslandFeatureCache');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 const {
@@ -39,64 +40,89 @@ function parseAIJson(text, fallback = {}) {
   }
 }
 
-// Helper: AI call with retry + rotational model fallback
-// Each model has its own separate quota, so rotating maximizes free-tier usage
+// ─── Gemini fallback chain ─────────────────────────────────────
+// Cycles through every (key × model) combo so a single exhausted/down
+// bucket never takes the whole system down.
 const MODELS = [
-  'gemini-1.5-flash-latest', // Most reliable alias across SDKs
-  'gemini-1.5-pro-latest',
-  'gemini-pro',              // Legacy fallback
-  'gemini-1.0-pro',
-  'gemini-2.0-flash-exp'     // Experimental alias
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-flash-latest',
 ];
-async function callAI(prompt, retries = 3) {
+
+const CALL_TIMEOUT_MS = 20_000; // per-attempt ceiling so a hung request never blocks the cascade
+
+function classifyError(err) {
+  const msg = (err?.message || '').toLowerCase();
+  if (msg.includes('api_key_invalid') || msg.includes('permission_denied') || msg.includes(' 403')) return 'fatal_key';
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted') || msg.includes('too many')) return 'rate_limit';
+  if (msg.includes('404') || msg.includes('not found') || msg.includes('model not')) return 'model_missing';
+  if (msg.includes('timeout') || msg.includes('aborted') || msg.includes('econnreset') || msg.includes('network') || msg.includes('fetch failed')) return 'transient';
+  if (msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('unavailable')) return 'server';
+  return 'unknown';
+}
+
+async function callOnce(ai, modelName, prompt) {
+  const model = ai.getGenerativeModel({ model: modelName });
+  const gen = model.generateContent(prompt);
+  const timeout = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error('timeout after ' + CALL_TIMEOUT_MS + 'ms')), CALL_TIMEOUT_MS)
+  );
+  const result = await Promise.race([gen, timeout]);
+  return result.response.text();
+}
+
+async function callAI(prompt) {
   const instances = getGenAIInstances();
-  
-  // Matrix Rotation: Outer Loop (API Keys), Inner Loop (Models)
-  for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
-    const ai = instances[keyIdx];
-    
-    for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
-      const modelName = MODELS[modelIdx];
-      for (let attempt = 1; attempt <= retries; attempt++) {
+  const deadKeys = new Set();  // keys marked fatal_key — skip for this call
+
+  // Two full passes through the matrix. Second pass handles transient hiccups
+  // that cleared up after we tried other combos.
+  for (let pass = 1; pass <= 2; pass++) {
+    for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
+      if (deadKeys.has(keyIdx)) continue;
+      const ai = instances[keyIdx];
+      const label = `[Pass ${pass}][Key ${keyIdx + 1}/${instances.length}]`;
+
+      for (const modelName of MODELS) {
         try {
-          const model = ai.getGenerativeModel({ model: modelName });
-          const result = await model.generateContent(prompt);
-          return result.response.text();
-        } catch (err) {
-          const errMsg = err.message ? err.message.toLowerCase() : '';
-          const isRateLimit = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('too many requests');
-          const isFatalKeyError = errMsg.includes('400') || errMsg.includes('403') || errMsg.includes('api_key_invalid');
-          
-          console.log(`[Key ${keyIdx + 1}/${instances.length}] AI attempt ${attempt}/${retries} with ${modelName} failed: ${err.message.substring(0, 100)}`);
-          
-          if (isRateLimit && attempt < retries) {
-            const delay = Math.pow(2, attempt) * 1000;
-            console.log(`Waiting ${delay/1000}s before retry...`);
-            await new Promise(r => setTimeout(r, delay));
-          } else if (isFatalKeyError && keyIdx < instances.length - 1) {
-            console.log(`Key ${keyIdx + 1} appears invalid or disabled. Skipping entirely to Key ${keyIdx + 2}...`);
-            break; // Break attempt. We need to break model loop too, but let's just let it naturally exhaust if we don't use labels.
-            // Wait, to skip a key entirely, we can break the model loop.
-          } else if (modelIdx < MODELS.length - 1 && !isFatalKeyError) {
-            console.log(`Model exhausted. Switching to fallback model: ${MODELS[modelIdx + 1]}`);
-            break; 
-          } else if (keyIdx < instances.length - 1) {
-            console.log(`Key ${keyIdx + 1} fully exhausted. Rotating to Key ${keyIdx + 2}...`);
-            break;
-          } else {
-            console.log(`Final failure on last key & model.`);
+          const text = await callOnce(ai, modelName, prompt);
+          if (text) {
+            if (pass > 1 || keyIdx > 0) console.log(`${label} ${modelName} ✅ recovered`);
+            return text;
           }
-        } // closes catch
-      } // closes for (attempt)
-      
-      // If we flagged a fatal key error, break the model loop to quickly skip to next key
-      if (attempt <= retries) {
-         // This means we hit a break above. We should technically check why we broke, 
-         // but if the key is fatally broken, we should just let the outer loops continue.
+        } catch (err) {
+          const kind = classifyError(err);
+          console.log(`${label} ${modelName} ❌ ${kind}: ${(err.message || '').substring(0, 140)}`);
+
+          if (kind === 'fatal_key') {
+            deadKeys.add(keyIdx);
+            break; // skip remaining models for this key
+          }
+          if (kind === 'rate_limit' || kind === 'model_missing') {
+            continue; // next model — same key
+          }
+          if (kind === 'transient' || kind === 'server') {
+            // very short sleep, then try next model (different bucket)
+            await new Promise(r => setTimeout(r, 300));
+            continue;
+          }
+          // unknown — treat like transient
+          continue;
+        }
       }
-    } // closes for (model)
-  } // closes for (key)
-  throw new Error('All API Keys and Models exhausted after retries');
+      // all models on this key failed → next key
+    }
+
+    // End of a full pass — small backoff before re-trying the matrix
+    if (pass < 2) {
+      console.log('Full matrix pass exhausted, waiting 2s and retrying once more...');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  throw new Error('All API keys and models exhausted after 2 full passes');
 }
 
 // Helper: resolve multiple islands from IDs
@@ -906,72 +932,161 @@ function buildFallbackItinerary(islands, nights, selectedActivities = []) {
 // POST /api/planner/feature
 // Fetch authentic contextual AI data for island features (Hotels, Restaurants, etc)
 // ─────────────────────────────────────────────────────────────
+// Fetch one Pexels landscape image by query, returning a large URL or null
+async function pexelsImage(query) {
+  const key = process.env.PEXELS_API_KEY;
+  if (!key) return null;
+  try {
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=3&orientation=landscape`;
+    const res = await fetch(url, { headers: { Authorization: key } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.photos || data.photos.length === 0) return null;
+    const p = data.photos[0];
+    return p.src.large2x || p.src.large || p.src.original;
+  } catch (e) {
+    return null;
+  }
+}
+
+const MAX_FEATURE_ITEMS = 12; // upper cap per island/feature
+const DEFAULT_FIRST_BATCH = 4;
+const DEFAULT_MORE_BATCH = 2;
+
 exports.getIslandFeatureData = asyncHandler(async (req, res, next) => {
   const { islandName, featureType } = req.body;
+  const offset = Math.max(0, parseInt(req.body.offset, 10) || 0);
+  const limit = Math.max(1, Math.min(6, parseInt(req.body.limit, 10) || (offset === 0 ? DEFAULT_FIRST_BATCH : DEFAULT_MORE_BATCH)));
 
   if (!islandName || !featureType) {
     return next(new ErrorResponse('Island name and feature type are required', 400));
   }
 
-  const prompt = `You are a specialized Indian Island Tourism Expert. 
-The user is looking for real, authentic data for: "${featureType}" on "${islandName}".
+  // Load (or create) the cumulative cache doc
+  let cache = await IslandFeatureCache.findOne({ islandName, featureType });
+  const existing = cache?.features || [];
 
-Provide EXACTLY 10 real-world, authentic entities that actually exist (or highly realistic extrapolations if it's a very remote island).
-If the feature is "Hotels", provide 10 real resorts or guesthouses.
-If it is "Restaurants" or "Cuisine", provide 10 real eateries or specific famous authentic dishes found there.
-If it is "Temples" or "Beaches" or "Things to Do", provide 10 real locations/activities.
+  // 1) Can we serve this slice fully from cache? → instant
+  if (existing.length >= offset + limit) {
+    const slice = existing.slice(offset, offset + limit);
+    return res.status(200).json({
+      success: true,
+      data: slice,
+      total: existing.length,
+      hasMore: existing.length < MAX_FEATURE_ITEMS,
+      cached: true,
+    });
+  }
 
-Return a JSON object (no markdown, no code blocks, ONLY pure JSON):
+  // 2) We need `needed` more items from the AI
+  const needed = Math.min(limit, MAX_FEATURE_ITEMS - existing.length);
+  if (needed <= 0) {
+    return res.status(200).json({
+      success: true,
+      data: existing.slice(offset),
+      total: existing.length,
+      hasMore: false,
+    });
+  }
+
+  const typeGuide = {
+    Hotels: 'real hotels, resorts, or guesthouses that actually exist on or near this island',
+    Restaurants: 'real restaurants, cafes, or eateries with their actual names',
+    Cuisines: 'real local dishes, regional specialties, and authentic food items found on this island',
+    Temples: 'real temples, churches, mosques, or historically significant religious sites',
+    Beaches: 'real named beaches on this island',
+    Activities: 'real things to do — water sports, treks, viewpoints, tours — that actually exist here',
+  }[featureType] || `real ${featureType.toLowerCase()} on this island`;
+
+  const exclusions = existing.map(f => f.name).filter(Boolean);
+  const exclusionBlock = exclusions.length
+    ? `\n\nDO NOT repeat or closely resemble any of these already-listed items: ${exclusions.join(', ')}.`
+    : '';
+
+  const prompt = `You are an expert on Indian island tourism. List EXACTLY ${needed} ${typeGuide} for "${islandName}".${exclusionBlock}
+
+Rules:
+- Use REAL names only. If you are uncertain, use the closest mainland equivalent rather than inventing a name.
+- Each description must be 2-3 concrete sentences — mention what makes it distinctive (not generic filler).
+- "imageKeyword" must be 2-4 English words that will return a relevant travel photo on a stock-photo site. NO island name, NO generic words like "premium" or "authentic". Examples: "beach resort pool", "indian seafood thali", "hindu temple gopuram", "scuba diving coral", "white sand beach palm trees".
+
+Return ONLY pure JSON (no markdown, no prose), matching exactly:
 {
   "features": [
     {
-      "name": "Name of the place/activity/dish",
-      "description": "2-3 sentences of highly detailed, evocative description.",
+      "name": "string — real name",
+      "description": "string — 2-3 sentences",
       "rating": 4.5,
-      "priceRange": "string describing cost (e.g., '₹₹₹', 'Free', '₹500/person')",
+      "priceRange": "string like '₹₹', '₹500/person', or 'Free'",
       "tags": ["Tag1", "Tag2", "Tag3"],
-      "imageKeyword": "2-3 distinct english keywords to search on Unsplash (e.g., 'luxury beach resort', 'indian seafood plating', 'hindu temple architecture')"
+      "imageKeyword": "stock photo search keywords"
     }
   ]
 }`;
 
+  let freshFeatures = [];
   try {
     const text = await callAI(prompt);
-    let parsed = parseAIJson(text, { features: [] });
-
-    // Ensure we have an array
-    if (!parsed.features || !Array.isArray(parsed.features)) {
-      parsed.features = [];
-    }
-
-    res.status(200).json({
-      success: true,
-      data: parsed.features,
-    });
+    const parsed = parseAIJson(text, { features: [] });
+    if (Array.isArray(parsed.features)) freshFeatures = parsed.features.slice(0, needed);
   } catch (err) {
     console.error('AI Feature Fetch Error:', err.message);
-    
-    // Instead of throwing 500 and breaking the UI, gracefully fallback!
-    res.status(200).json({
-      success: true,
-      data: [
-        {
-          name: `Premium ${featureType.replace(/s$/, '')} near ${islandName}`,
-          description: `Our team has highly curated this recommended spot on ${islandName} for a phenomenal experience.`,
-          rating: 4.5,
-          priceRange: '₹₹',
-          tags: ['Popular', 'Recommended', 'Authentic'],
-          imageKeyword: `${featureType.toLowerCase()} ${islandName}`
-        },
-        {
-          name: `Authentic Local ${featureType.replace(/s$/, '')}`,
-          description: `Discover the true flavor and experience of ${islandName} at this highly rated local favorite.`,
-          rating: 4.8,
-          priceRange: '₹₹₹',
-          tags: ['Local', 'Experience'],
-          imageKeyword: featureType.toLowerCase()
-        }
-      ]
+    if (existing.length > offset) {
+      // Cache partially covers the request — return what we have rather than 503
+      return res.status(200).json({
+        success: true,
+        data: existing.slice(offset),
+        total: existing.length,
+        hasMore: false,
+        partial: true,
+      });
+    }
+    return res.status(503).json({
+      success: false,
+      message: 'Our travel guide is temporarily unavailable. Please try again in a minute.',
     });
   }
+
+  if (freshFeatures.length === 0) {
+    if (existing.length > offset) {
+      return res.status(200).json({
+        success: true,
+        data: existing.slice(offset),
+        total: existing.length,
+        hasMore: false,
+        partial: true,
+      });
+    }
+    return res.status(503).json({
+      success: false,
+      message: 'Could not generate results. Please try again in a minute.',
+    });
+  }
+
+  // Enrich new items with Pexels images (parallel — small batch so it's fast)
+  await Promise.all(freshFeatures.map(async (f) => {
+    const query = f.imageKeyword || `${featureType} India`;
+    f.image = await pexelsImage(query);
+  }));
+
+  // Append to cache
+  const updatedFeatures = [...existing, ...freshFeatures];
+  try {
+    cache = await IslandFeatureCache.findOneAndUpdate(
+      { islandName, featureType },
+      { islandName, featureType, features: updatedFeatures, fetchedAt: new Date() },
+      { upsert: true, new: true }
+    );
+  } catch (e) {
+    console.warn('Feature cache save failed:', e.message);
+  }
+
+  // Return only the slice the client asked for
+  const slice = updatedFeatures.slice(offset, offset + limit);
+  res.status(200).json({
+    success: true,
+    data: slice,
+    total: updatedFeatures.length,
+    hasMore: updatedFeatures.length < MAX_FEATURE_ITEMS,
+  });
 });
