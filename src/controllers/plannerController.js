@@ -44,14 +44,13 @@ function parseAIJson(text, fallback = {}) {
 // Cycles through every (key × model) combo so a single exhausted/down
 // bucket never takes the whole system down.
 const MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-flash-latest',
+  'gemini-2.0-flash-lite',  // Highest free capacity
+  'gemini-2.0-flash',       // Primary stable model
+  // NUKED all preview/experimental models — they consistently return 404 model_missing 
+  // on free-tier keys and add ~8 seconds of dead network wait time to the matrix.
 ];
 
-const CALL_TIMEOUT_MS = 20_000; // per-attempt ceiling so a hung request never blocks the cascade
+const CALL_TIMEOUT_MS = 10_000; // 10s per-attempt ceiling — faster matrix cycling
 
 function classifyError(err) {
   const msg = (err?.message || '').toLowerCase();
@@ -77,9 +76,13 @@ async function callAI(prompt) {
   const instances = getGenAIInstances();
   const deadKeys = new Set();  // keys marked fatal_key — skip for this call
 
-  // Two full passes through the matrix. Second pass handles transient hiccups
-  // that cleared up after we tried other combos.
+  // Pass 2 only makes sense for transient errors (network hiccup, server blip).
+  // rate_limit won't clear in 2s, and model_missing is permanent — so if Pass 1
+  // has zero transient errors, we skip Pass 2 entirely and fall through to the
+  // caller's catch block immediately (which serves the fallback response).
   for (let pass = 1; pass <= 2; pass++) {
+    let hadTransientError = false; // track if retry is worth attempting
+
     for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
       if (deadKeys.has(keyIdx)) continue;
       const ai = instances[keyIdx];
@@ -101,23 +104,24 @@ async function callAI(prompt) {
             break; // skip remaining models for this key
           }
           if (kind === 'rate_limit' || kind === 'model_missing') {
-            continue; // next model — same key
+            continue; // next model — same key, rate limits don't recover in 2s
           }
-          if (kind === 'transient' || kind === 'server') {
-            // very short sleep, then try next model (different bucket)
+          if (kind === 'transient' || kind === 'server' || kind === 'unknown') {
+            hadTransientError = true; // pass 2 is worth attempting
             await new Promise(r => setTimeout(r, 300));
             continue;
           }
-          // unknown — treat like transient
-          continue;
         }
       }
-      // all models on this key failed → next key
     }
 
-    // End of a full pass — small backoff before re-trying the matrix
-    if (pass < 2) {
-      console.log('Full matrix pass exhausted, waiting 2s and retrying once more...');
+    // Only do Pass 2 if there were transient errors that might have cleared
+    if (pass === 1) {
+      if (!hadTransientError) {
+        console.log('Pass 1: all failures are rate_limit/model_missing — skipping Pass 2, serving fallback immediately.');
+        break; // jump straight to caller's catch
+      }
+      console.log('Pass 1 exhausted with transient errors, waiting 2s and retrying...');
       await new Promise(r => setTimeout(r, 2000));
     }
   }
@@ -214,6 +218,7 @@ exports.getRoutes = asyncHandler(async (req, res, next) => {
 // Step 3: Rich accommodation search across multiple islands
 // ─────────────────────────────────────────────────────────────
 exports.getAccommodations = asyncHandler(async (req, res, next) => {
+  console.log('[ACCOMMODATION] Request received, resolving islands...');
   const { islandIds, islandId, dates, travelers } = req.body;
   const ids = islandIds || (islandId ? [islandId] : []);
 
@@ -225,50 +230,18 @@ exports.getAccommodations = asyncHandler(async (req, res, next) => {
   const islandNames = islands.map(i => i.name).join(', ');
   const groups = [...new Set(islands.map(i => i.location?.group))].join(', ');
 
-  const prompt = `You are an expert Indian island accommodation specialist with deep knowledge of real properties.
+  console.log(`[ACCOMMODATION] Islands: ${islandNames}, Nights: ${nights}, calling AI...`);
 
-For a trip covering these islands: ${islandNames} (${groups} region)
-Duration: ${nights} nights | Travelers: ${travelers?.adults || 1} adults, ${travelers?.children || 0} children
+  const prompt = `You are an Indian island accommodation expert. Return accommodations for: ${islandNames} (${groups} region). ${nights} nights. ${travelers?.adults || 1} adults, ${travelers?.children || 0} children.
 
-Provide a COMPREHENSIVE list of REAL accommodation options available in and around these islands.
+Return ONLY pure JSON (no markdown, no backticks):
+{"accommodations":[{"name":"property name","type":"Beach Resort","category":"Luxury","starRating":4,"pricePerNight":8000,"rating":4.3,"amenities":["WiFi","AC","Pool"],"mealsIncluded":{"breakfast":true,"lunch":false,"dinner":false},"description":"Brief description","location":"Area","island":"Island name","bookingTip":"How to book"}]}
 
-Return a JSON object with this EXACT structure (no markdown, no code blocks, just pure JSON):
-{
-  "accommodations": [
-    {
-      "name": "REAL property name",
-      "type": "5-Star Hotel|4-Star Hotel|3-Star Hotel|2-Star Hotel|Beach Resort|Eco Resort|Villa|Private Villa|Airbnb|Cottage|Eco Hut|Homestay|Guesthouse|Hostel|Government Guesthouse|Tent Camp",
-      "category": "Ultra Luxury|Luxury|Premium|Standard|Budget|Backpacker",
-      "starRating": 5,
-      "pricePerNight": 15000,
-      "rating": 4.5,
-      "amenities": ["WiFi", "AC", "Pool", "Spa", "Restaurant", "Beach Access", "Diving Center"],
-      "mealsIncluded": { "breakfast": true, "lunch": false, "dinner": true },
-      "description": "Detailed 2-line description of the property and what makes it special",
-      "location": "Specific area/beach within the island",
-      "island": "Which island this property is on",
-      "bookingTip": "How to book, best time to book, or special notes"
-    }
-  ]
-}
-
-MANDATORY Rules:
-1. Return 12-18 REAL named properties (not made-up names)
-2. Distribute across ALL price tiers:
-   - 2-3 Ultra Luxury / 5-Star (₹10,000-₹40,000/night) — Taj, ITC, Oberoi, Barefoot, etc.
-   - 2-3 Premium / 4-Star (₹5,000-₹12,000/night) — name real resorts
-   - 3-4 Standard / 3-Star Hotels (₹2,000-₹5,000/night)
-   - 2-3 Homestays / Guesthouses (₹800-₹2,500/night)
-   - 1-2 Hostels / Dormitories (₹400-₹1,000/night)
-   - 1-2 Villas / Airbnb / Cottages (₹3,000-₹15,000/night)
-   - Include any Government/APWD/Forest Guesthouses if available (these are common in Andaman & Lakshadweep)
-3. Prices MUST be realistic for these specific islands — island prices are 20-40% higher than mainland
-4. For multi-island trips, include options on different islands
-5. If an island is uninhabited, note accommodations on the nearest inhabited island
-6. Include real booking platforms where applicable (SPORTS portal for Lakshadweep, A&N Tourism for Andaman)`;
+Return exactly 8 real properties ranging from budget (500/night) to luxury (20000/night). Include at least 1 government guesthouse if in Andaman/Lakshadweep.`;
 
   try {
     const text = await callAI(prompt);
+    console.log('[ACCOMMODATION] AI responded successfully');
     let parsed = parseAIJson(text, { accommodations: [] });
 
     if (parsed.accommodations) {
