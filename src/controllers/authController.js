@@ -35,34 +35,98 @@ exports.googleAuth = asyncHandler(async (req, res, next) => {
       email,
       googleId,
       avatar: picture || '',
+      isVerified: true,
     });
-  } else if (!user.googleId) {
-    user.googleId = googleId;
-    if (picture && !user.avatar) user.avatar = picture;
-    await user.save();
+  } else {
+    let changed = false;
+    if (!user.googleId) { user.googleId = googleId; changed = true; }
+    if (picture && !user.avatar) { user.avatar = picture; changed = true; }
+    if (!user.isVerified) { user.isVerified = true; changed = true; }
+    if (changed) await user.save();
   }
 
   sendTokenResponse(user, 200, res);
 });
 
-// @desc      Register user
+// @desc      Register user (step 1 — create unverified + send OTP)
 // @route     POST /api/auth/register
 // @access    Public
 exports.register = asyncHandler(async (req, res, next) => {
   const { name, email, password, role } = req.body;
 
-  // Validate required fields
   if (!name || !email || !password) {
     return next(new ErrorResponse('Please provide name, email and password', 400));
   }
 
-  // Create user
-  const user = await User.create({
-    name,
-    email,
-    password,
-    role
-  });
+  let user = await User.findOne({ email });
+
+  if (user && user.isVerified) {
+    return next(new ErrorResponse('Email already registered', 400));
+  }
+
+  if (user && !user.isVerified) {
+    // Unverified account already exists — update details and re-send OTP
+    user.name = name;
+    user.password = password;
+    if (role) user.role = role;
+  } else {
+    user = new User({ name, email, password, role, isVerified: false });
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  user.otp = crypto.createHash('sha256').update(otp).digest('hex');
+  user.otpExpire = Date.now() + 10 * 60 * 1000;
+  user.otpLastSent = Date.now();
+
+  await user.save();
+
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'Verify your Explore Indian Islands account',
+      message: `Welcome to Explore Indian Islands!\n\nYour verification OTP is: ${otp}\n\nThis code is valid for 10 minutes.`
+    });
+    res.status(200).json({ success: true, data: 'OTP sent', email: user.email });
+  } catch (err) {
+    console.error(err);
+    // If user was just created, remove it so the email is free to retry
+    if (!user.isVerified && !user.googleId) {
+      await User.deleteOne({ _id: user._id });
+    }
+    return next(new ErrorResponse('Email could not be sent', 500));
+  }
+});
+
+// @desc      Verify signup OTP (step 2)
+// @route     POST /api/auth/verifysignup
+// @access    Public
+exports.verifySignup = asyncHandler(async (req, res, next) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return next(new ErrorResponse('Please provide email and OTP', 400));
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) return next(new ErrorResponse('Invalid email or OTP', 400));
+
+  if (user.isVerified) {
+    return next(new ErrorResponse('Account already verified — please log in', 400));
+  }
+
+  if (!user.otp || !user.otpExpire || user.otpExpire < Date.now()) {
+    return next(new ErrorResponse('OTP expired — please request a new one', 400));
+  }
+
+  const hashed = crypto.createHash('sha256').update(otp).digest('hex');
+  if (hashed !== user.otp) {
+    return next(new ErrorResponse('Invalid OTP', 400));
+  }
+
+  user.isVerified = true;
+  user.otp = undefined;
+  user.otpExpire = undefined;
+  user.otpLastSent = undefined;
+  await user.save({ validateBeforeSave: false });
 
   sendTokenResponse(user, 201, res);
 });
@@ -90,6 +154,10 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   if (!isMatch) {
     return next(new ErrorResponse('Invalid credentials', 401));
+  }
+
+  if (!user.isVerified) {
+    return next(new ErrorResponse('Account not verified. Please complete OTP verification.', 403));
   }
 
   sendTokenResponse(user, 200, res);
@@ -329,11 +397,21 @@ const sendTokenResponse = (user, statusCode, res) => {
     options.secure = true;
   }
 
+  const safeUser = {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    avatar: user.avatar,
+    bio: user.bio,
+    role: user.role,
+  };
+
   res
     .status(statusCode)
     .cookie('token', token, options)
     .json({
       success: true,
-      token
+      token,
+      user: safeUser,
     });
 };

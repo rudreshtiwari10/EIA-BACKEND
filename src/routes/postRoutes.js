@@ -5,9 +5,15 @@ const fs = require('fs');
 const {
   createPost,
   getAllPosts,
+  getPostById,
   getPostsByUser,
   getPostsByIsland,
   deletePost,
+  toggleLike,
+  addComment,
+  deleteComment,
+  addReply,
+  deleteReply,
 } = require('../controllers/postController');
 const { protect } = require('../middleware/auth');
 
@@ -37,6 +43,13 @@ router.get('/', getAllPosts);
 router.post('/', protect, upload.single('image'), createPost);
 router.get('/user/:userId', getPostsByUser);
 router.get('/island/:islandId', getPostsByIsland);
+router.get('/:id', getPostById);
 router.delete('/:id', protect, deletePost);
+
+router.post('/:id/like', protect, toggleLike);
+router.post('/:id/comment', protect, addComment);
+router.delete('/:id/comment/:commentId', protect, deleteComment);
+router.post('/:id/comment/:commentId/reply', protect, addReply);
+router.delete('/:id/comment/:commentId/reply/:replyId', protect, deleteReply);
 
 module.exports = router;

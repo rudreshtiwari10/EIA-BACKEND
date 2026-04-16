@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   register,
+  verifySignup,
   login,
   getMe,
   updateProfile,
@@ -63,6 +64,7 @@ const router = express.Router();
  *         description: Bad request
  */
 router.post('/register', register);
+router.post('/verifysignup', verifySignup);
 
 /**
  * @swagger

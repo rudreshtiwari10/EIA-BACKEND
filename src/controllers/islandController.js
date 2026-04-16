@@ -6,23 +6,32 @@ const asyncHandler = require('../middleware/asyncHandler');
 // @route   GET /api/islands
 // @access  Public
 exports.getAllIslands = asyncHandler(async (req, res, next) => {
-  // Copy req.query
-  const reqQuery = { ...req.query };
+  const filter = {};
 
-  // Fields to exclude from filtering
-  const removeFields = ['select', 'sort', 'page', 'limit', 'name'];
-  removeFields.forEach(param => delete reqQuery[param]);
-
-  // Advanced Filtering (Supports gt, gte, in, etc.)
-  let queryStr = JSON.stringify(reqQuery);
-  queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
-
-  let query = Island.find(JSON.parse(queryStr));
-
-  // Name search: apply clean case-insensitive regex (separate from general filter)
-  if (req.query.name) {
-    query = query.find({ name: { $regex: req.query.name, $options: 'i' } });
+  // Group filter (nested location.group)
+  if (req.query.group && req.query.group !== 'All') {
+    filter['location.group'] = req.query.group;
   }
+
+  // Vibe filter (array contains)
+  if (req.query.vibe && req.query.vibe !== 'All') {
+    filter.vibeTags = { $regex: req.query.vibe, $options: 'i' };
+  }
+
+  // Name / general search across name, nativeName, summary
+  const searchTerm = req.query.search || req.query.name;
+  if (searchTerm) {
+    const re = { $regex: searchTerm, $options: 'i' };
+    filter.$or = [
+      { name: re },
+      { nativeName: re },
+      { 'description.summary': re },
+      { vibeTags: re },
+      { 'location.group': re },
+    ];
+  }
+
+  let query = Island.find(filter);
 
   // Sorting
   if (req.query.sort) {
@@ -37,7 +46,7 @@ exports.getAllIslands = asyncHandler(async (req, res, next) => {
   const limit = parseInt(req.query.limit, 10) || 200;
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-  const total = await Island.countDocuments();
+  const total = await Island.countDocuments(filter);
 
   query = query.skip(startIndex).limit(limit);
 

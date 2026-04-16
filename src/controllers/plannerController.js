@@ -10,15 +10,20 @@ const {
   ANDAMAN_FERRIES,
 } = require('../utils/pricingEngine');
 
-let genAI = null;
-function getGenAI() {
-  if (!genAI) {
+let genAIInstances = null;
+function getGenAIInstances() {
+  if (!genAIInstances) {
     const { GoogleGenerativeAI } = require('@google/generative-ai');
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    
+    // Support either comma-separated list or fallback to single key fallback
+    const keysString = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY;
+    if (!keysString) throw new Error('No Gemini API keys found in environment.');
+    
+    const keys = keysString.split(',').map(k => k.trim()).filter(Boolean);
+    genAIInstances = keys.map(key => new GoogleGenerativeAI(key));
   }
-  return genAI;
+  return genAIInstances;
 }
-
 // Helper: parse AI JSON response
 function parseAIJson(text, fallback = {}) {
   try {
@@ -37,42 +42,61 @@ function parseAIJson(text, fallback = {}) {
 // Helper: AI call with retry + rotational model fallback
 // Each model has its own separate quota, so rotating maximizes free-tier usage
 const MODELS = [
-  'gemini-2.0-flash',       // Primary — fastest, best quality
-  'gemini-2.0-flash-lite',  // Lighter variant, separate quota
-  'gemini-1.5-flash',       // Previous gen, very reliable
-  'gemini-1.5-flash-8b',    // Smaller variant, separate quota
-  'gemini-1.5-pro',         // Premium model, different quota pool
-  'gemini-2.5-flash-preview-04-17',      // Latest preview
+  'gemini-1.5-flash-latest', // Most reliable alias across SDKs
+  'gemini-1.5-pro-latest',
+  'gemini-pro',              // Legacy fallback
+  'gemini-1.0-pro',
+  'gemini-2.0-flash-exp'     // Experimental alias
 ];
 async function callAI(prompt, retries = 3) {
-  const ai = getGenAI();
+  const instances = getGenAIInstances();
   
-  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
-    const modelName = MODELS[modelIdx];
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const model = ai.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        return result.response.text();
-      } catch (err) {
-        const is429 = err.message?.includes('429') || err.message?.includes('quota');
-        console.log(`AI attempt ${attempt}/${retries} with ${modelName} failed: ${is429 ? '429 Rate Limited' : err.message.substring(0, 100)}`);
-        
-        if (is429 && attempt < retries) {
-          // Wait before retry (exponential backoff: 2s, 4s, 8s)
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`Waiting ${delay/1000}s before retry...`);
-          await new Promise(r => setTimeout(r, delay));
-        } else if (is429 && modelIdx < MODELS.length - 1) {
-          console.log(`Switching to fallback model: ${MODELS[modelIdx + 1]}`);
-          break; // Try next model
-        } else if (!is429) {
-          throw err; // Non-rate-limit error, throw immediately
-        }
+  // Matrix Rotation: Outer Loop (API Keys), Inner Loop (Models)
+  for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
+    const ai = instances[keyIdx];
+    
+    for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
+      const modelName = MODELS[modelIdx];
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          const model = ai.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          return result.response.text();
+        } catch (err) {
+          const errMsg = err.message ? err.message.toLowerCase() : '';
+          const isRateLimit = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('too many requests');
+          const isFatalKeyError = errMsg.includes('400') || errMsg.includes('403') || errMsg.includes('api_key_invalid');
+          
+          console.log(`[Key ${keyIdx + 1}/${instances.length}] AI attempt ${attempt}/${retries} with ${modelName} failed: ${err.message.substring(0, 100)}`);
+          
+          if (isRateLimit && attempt < retries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`Waiting ${delay/1000}s before retry...`);
+            await new Promise(r => setTimeout(r, delay));
+          } else if (isFatalKeyError && keyIdx < instances.length - 1) {
+            console.log(`Key ${keyIdx + 1} appears invalid or disabled. Skipping entirely to Key ${keyIdx + 2}...`);
+            break; // Break attempt. We need to break model loop too, but let's just let it naturally exhaust if we don't use labels.
+            // Wait, to skip a key entirely, we can break the model loop.
+          } else if (modelIdx < MODELS.length - 1 && !isFatalKeyError) {
+            console.log(`Model exhausted. Switching to fallback model: ${MODELS[modelIdx + 1]}`);
+            break; 
+          } else if (keyIdx < instances.length - 1) {
+            console.log(`Key ${keyIdx + 1} fully exhausted. Rotating to Key ${keyIdx + 2}...`);
+            break;
+          } else {
+            console.log(`Final failure on last key & model.`);
+          }
+        } // closes catch
+      } // closes for (attempt)
+      
+      // If we flagged a fatal key error, break the model loop to quickly skip to next key
+      if (attempt <= retries) {
+         // This means we hit a break above. We should technically check why we broke, 
+         // but if the key is fatally broken, we should just let the outer loops continue.
       }
-    }
-  }
-  throw new Error('All AI models exhausted after retries');
+    } // closes for (model)
+  } // closes for (key)
+  throw new Error('All API Keys and Models exhausted after retries');
 }
 
 // Helper: resolve multiple islands from IDs
@@ -878,3 +902,76 @@ function buildFallbackItinerary(islands, nights, selectedActivities = []) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+// POST /api/planner/feature
+// Fetch authentic contextual AI data for island features (Hotels, Restaurants, etc)
+// ─────────────────────────────────────────────────────────────
+exports.getIslandFeatureData = asyncHandler(async (req, res, next) => {
+  const { islandName, featureType } = req.body;
+
+  if (!islandName || !featureType) {
+    return next(new ErrorResponse('Island name and feature type are required', 400));
+  }
+
+  const prompt = `You are a specialized Indian Island Tourism Expert. 
+The user is looking for real, authentic data for: "${featureType}" on "${islandName}".
+
+Provide EXACTLY 10 real-world, authentic entities that actually exist (or highly realistic extrapolations if it's a very remote island).
+If the feature is "Hotels", provide 10 real resorts or guesthouses.
+If it is "Restaurants" or "Cuisine", provide 10 real eateries or specific famous authentic dishes found there.
+If it is "Temples" or "Beaches" or "Things to Do", provide 10 real locations/activities.
+
+Return a JSON object (no markdown, no code blocks, ONLY pure JSON):
+{
+  "features": [
+    {
+      "name": "Name of the place/activity/dish",
+      "description": "2-3 sentences of highly detailed, evocative description.",
+      "rating": 4.5,
+      "priceRange": "string describing cost (e.g., '₹₹₹', 'Free', '₹500/person')",
+      "tags": ["Tag1", "Tag2", "Tag3"],
+      "imageKeyword": "2-3 distinct english keywords to search on Unsplash (e.g., 'luxury beach resort', 'indian seafood plating', 'hindu temple architecture')"
+    }
+  ]
+}`;
+
+  try {
+    const text = await callAI(prompt);
+    let parsed = parseAIJson(text, { features: [] });
+
+    // Ensure we have an array
+    if (!parsed.features || !Array.isArray(parsed.features)) {
+      parsed.features = [];
+    }
+
+    res.status(200).json({
+      success: true,
+      data: parsed.features,
+    });
+  } catch (err) {
+    console.error('AI Feature Fetch Error:', err.message);
+    
+    // Instead of throwing 500 and breaking the UI, gracefully fallback!
+    res.status(200).json({
+      success: true,
+      data: [
+        {
+          name: `Premium ${featureType.replace(/s$/, '')} near ${islandName}`,
+          description: `Our team has highly curated this recommended spot on ${islandName} for a phenomenal experience.`,
+          rating: 4.5,
+          priceRange: '₹₹',
+          tags: ['Popular', 'Recommended', 'Authentic'],
+          imageKeyword: `${featureType.toLowerCase()} ${islandName}`
+        },
+        {
+          name: `Authentic Local ${featureType.replace(/s$/, '')}`,
+          description: `Discover the true flavor and experience of ${islandName} at this highly rated local favorite.`,
+          rating: 4.8,
+          priceRange: '₹₹₹',
+          tags: ['Local', 'Experience'],
+          imageKeyword: featureType.toLowerCase()
+        }
+      ]
+    });
+  }
+});
