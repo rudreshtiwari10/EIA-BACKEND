@@ -38,7 +38,7 @@ const islands = [
     images: [
       {
         url: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?q=80&w=800",
-        caption: "Radhanagar Beach"
+        caption: "Radhanagar Beach – Asia's finest beach on Havelock Island"
       }
     ],
     externalLinks: {
@@ -85,8 +85,8 @@ const islands = [
     vibeTags: ["Quiet","Snorkeling","Beach"],
     images: [
       {
-        url: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800",
-        caption: "Natural rock bridge"
+        url: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?q=80&w=800",
+        caption: "Crystal clear waters and coral reefs of Neil Island"
       }
     ],
     externalLinks: {
@@ -134,7 +134,7 @@ const islands = [
     images: [
       {
         url: "https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?q=80&w=800",
-        caption: "Agatti lagoon"
+        caption: "Agatti lagoon turquoise waters from aerial view"
       }
     ],
     externalLinks: {
@@ -182,7 +182,7 @@ const islands = [
     images: [
       {
         url: "https://images.unsplash.com/photo-1609137144813-7d9921338f24?q=80&w=800",
-        caption: "Diu Fort"
+        caption: "Diu Fort – a legacy of Portuguese colonial heritage"
       }
     ],
     externalLinks: {
@@ -230,7 +230,7 @@ const islands = [
     images: [
       {
         url: "https://images.unsplash.com/photo-1570168007204-dfb528c6958f?q=80&w=800",
-        caption: "Majuli landscape"
+        caption: "Lush green landscape and wetlands of Majuli Island"
       }
     ],
     externalLinks: {
@@ -239,39 +239,51 @@ const islands = [
     }
   },
 
-  { name:"Ross Island", nativeName:"Netaji Subhas Chandra Bose Dweep", location:{ group:"Andaman", coordinates:{ lat:11.6755, lng:92.7626 }, area:"0.6 sq km"}, status:{ isInhabited:false, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Historic administrative island of the British in Andaman.", history:"Abandoned after 1941 earthquake.", floraAndFauna:["Peacocks","Spotted deer","Tropical trees","Coral reefs","Seabirds"]}, culinaryHighlights:[{dishName:"Grilled Fish",description:"Simple grilled reef fish"}], bestTimeToVisit:{startMonth:"October",endMonth:"May",peakSeason:"December to February"}, vibeTags:["Historical","Nature"], images:[{url:"https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800",caption:"Historic ruins"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Ross_Island",govtPortal:"https://andaman.gov.in"} },
+  { name:"Ross Island", nativeName:"Netaji Subhas Chandra Bose Dweep", location:{ group:"Andaman", coordinates:{ lat:11.6755, lng:92.7626 }, area:"0.6 sq km"}, status:{ isInhabited:false, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Historic administrative island of the British in Andaman.", history:"Abandoned after 1941 earthquake.", floraAndFauna:["Peacocks","Spotted deer","Tropical trees","Coral reefs","Seabirds"]}, culinaryHighlights:[{dishName:"Grilled Fish",description:"Simple grilled reef fish"}], bestTimeToVisit:{startMonth:"October",endMonth:"May",peakSeason:"December to February"}, vibeTags:["Historical","Nature"], images:[{url:"https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?q=80&w=800",caption:"British colonial ruins consumed by jungle on Ross Island"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Ross_Island",govtPortal:"https://andaman.gov.in"} },
 
-  { name:"Baratang Island", nativeName:"Baratang", location:{ group:"Andaman", coordinates:{ lat:12.1176, lng:92.7427 }, area:"238 sq km"}, status:{ isInhabited:true, isProtectedArea:true, permitRequired:"Special Permission"}, description:{ summary:"Island famous for limestone caves and mangrove creeks.", history:"Known for mud volcanoes and tribal reserves.", floraAndFauna:["Mangroves","Crocodiles","Tropical birds","Mud volcanoes","Dense forests"]}, culinaryHighlights:[{dishName:"Fish Curry",description:"Local Andaman style fish curry"}], bestTimeToVisit:{startMonth:"November",endMonth:"April",peakSeason:"December to February"}, vibeTags:["Adventure","Caves"], images:[{url:"https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=800",caption:"Mangrove waterways"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Baratang_Island",govtPortal:"https://andaman.gov.in"} },
+  { name:"Baratang Island", nativeName:"Baratang", location:{ group:"Andaman", coordinates:{ lat:12.1176, lng:92.7427 }, area:"238 sq km"}, status:{ isInhabited:true, isProtectedArea:true, permitRequired:"Special Permission"}, description:{ summary:"Island famous for limestone caves and mangrove creeks.", history:"Known for mud volcanoes and tribal reserves.", floraAndFauna:["Mangroves","Crocodiles","Tropical birds","Mud volcanoes","Dense forests"]}, culinaryHighlights:[{dishName:"Fish Curry",description:"Local Andaman style fish curry"}], bestTimeToVisit:{startMonth:"November",endMonth:"April",peakSeason:"December to February"}, vibeTags:["Adventure","Caves"], images:[{url:"https://images.unsplash.com/photo-1596895111956-bf1cf0599ce5?q=80&w=800",caption:"Serene mangrove creek waterways of Baratang Island"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Baratang_Island",govtPortal:"https://andaman.gov.in"} },
 
-  { name:"Little Andaman", nativeName:"Little Andaman", location:{ group:"Andaman", coordinates:{ lat:10.757, lng:92.515 }, area:"707 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Island known for waterfalls and surfing beaches.", history:"Traditional home of the Onge tribe.", floraAndFauna:["Rainforests","Sea turtles","Waterfalls","Mangroves","Birdlife"]}, culinaryHighlights:[{dishName:"Coconut Fish Curry",description:"Island style fish curry"}], bestTimeToVisit:{startMonth:"October",endMonth:"April",peakSeason:"December to February"}, vibeTags:["Surfing","Adventure"], images:[{url:"https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800",caption:"Pristine beach"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Little_Andaman",govtPortal:"https://andaman.gov.in"} },
+  { name:"Little Andaman", nativeName:"Little Andaman", location:{ group:"Andaman", coordinates:{ lat:10.757, lng:92.515 }, area:"707 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Island known for waterfalls and surfing beaches.", history:"Traditional home of the Onge tribe.", floraAndFauna:["Rainforests","Sea turtles","Waterfalls","Mangroves","Birdlife"]}, culinaryHighlights:[{dishName:"Coconut Fish Curry",description:"Island style fish curry"}], bestTimeToVisit:{startMonth:"October",endMonth:"April",peakSeason:"December to February"}, vibeTags:["Surfing","Adventure"], images:[{url:"https://images.unsplash.com/photo-1508193638397-1c4234db14d8?q=80&w=800",caption:"Pristine surf beach and rainforest of Little Andaman"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Little_Andaman",govtPortal:"https://andaman.gov.in"} },
 
-  { name:"Minicoy Island", nativeName:"Maliku", location:{ group:"Lakshadweep", coordinates:{ lat:8.2955, lng:73.0483 }, area:"4.8 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Southernmost Lakshadweep island known for lighthouse.", history:"Strong cultural links with Maldives.", floraAndFauna:["Coral reefs","Lagoon fish","Sea turtles","Coconut palms","Seabirds"]}, culinaryHighlights:[{dishName:"Tuna Mas",description:"Traditional tuna preparation"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Scuba","Beach"], images:[{url:"https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800",caption:"Minicoy lagoon"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Minicoy",govtPortal:"https://lakshadweep.gov.in"} },
+  { name:"Minicoy Island", nativeName:"Maliku", location:{ group:"Lakshadweep", coordinates:{ lat:8.2955, lng:73.0483 }, area:"4.8 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Southernmost Lakshadweep island known for lighthouse.", history:"Strong cultural links with Maldives.", floraAndFauna:["Coral reefs","Lagoon fish","Sea turtles","Coconut palms","Seabirds"]}, culinaryHighlights:[{dishName:"Tuna Mas",description:"Traditional tuna preparation"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Scuba","Beach"], images:[{url:"https://images.unsplash.com/photo-1544552866-d3ed42536cfd?q=80&w=800",caption:"Minicoy lagoon and lighthouse overlooking the Indian Ocean"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Minicoy",govtPortal:"https://lakshadweep.gov.in"} },
 
-  { name:"Kavaratti Island", nativeName:"Kavaratti", location:{ group:"Lakshadweep", coordinates:{ lat:10.5667, lng:72.6417 }, area:"3.9 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Capital island of Lakshadweep known for lagoons.", history:"Administrative center of Lakshadweep.", floraAndFauna:["Coral reefs","Sea turtles","Reef fish","Palm trees","Lagoon ecosystems"]}, culinaryHighlights:[{dishName:"Spicy Tuna Curry",description:"Popular Lakshadweep dish"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Snorkeling","Beach"], images:[{url:"https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800",caption:"Lagoon waters"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Kavaratti",govtPortal:"https://lakshadweep.gov.in"} },
+  { name:"Kavaratti Island", nativeName:"Kavaratti", location:{ group:"Lakshadweep", coordinates:{ lat:10.5667, lng:72.6417 }, area:"3.9 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Capital island of Lakshadweep known for lagoons.", history:"Administrative center of Lakshadweep.", floraAndFauna:["Coral reefs","Sea turtles","Reef fish","Palm trees","Lagoon ecosystems"]}, culinaryHighlights:[{dishName:"Spicy Tuna Curry",description:"Popular Lakshadweep dish"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Snorkeling","Beach"], images:[{url:"https://images.unsplash.com/photo-1586500036706-41963de24d8b?q=80&w=800",caption:"Turquoise lagoon and white sand shores of Kavaratti Island"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Kavaratti",govtPortal:"https://lakshadweep.gov.in"} },
 
-  { name:"Bangaram Island", nativeName:"Bangaram", location:{ group:"Lakshadweep", coordinates:{ lat:10.9401, lng:72.2871 }, area:"1.2 sq km"}, status:{ isInhabited:false, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Luxury resort island famous for coral lagoons.", history:"Popular eco tourism destination.", floraAndFauna:["Coral reefs","Turtles","Lagoon fish","Palm trees","Seabirds"]}, culinaryHighlights:[{dishName:"Seafood Grill",description:"Fresh seafood grilled near beach"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Luxury","Beach","Scuba"], images:[{url:"https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800",caption:"Bangaram beach"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Bangaram_Atoll",govtPortal:"https://lakshadweep.gov.in"} },
+  { name:"Bangaram Island", nativeName:"Bangaram", location:{ group:"Lakshadweep", coordinates:{ lat:10.9401, lng:72.2871 }, area:"1.2 sq km"}, status:{ isInhabited:false, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Luxury resort island famous for coral lagoons.", history:"Popular eco tourism destination.", floraAndFauna:["Coral reefs","Turtles","Lagoon fish","Palm trees","Seabirds"]}, culinaryHighlights:[{dishName:"Seafood Grill",description:"Fresh seafood grilled near beach"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Luxury","Beach","Scuba"], images:[{url:"https://images.unsplash.com/photo-1505118380757-91f5f5632de0?q=80&w=800",caption:"Bangaram Island – pristine coral atoll and luxury beach resort"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Bangaram_Atoll",govtPortal:"https://lakshadweep.gov.in"} },
 
-  { name:"Kadmat Island", nativeName:"Kadmat", location:{ group:"Lakshadweep", coordinates:{ lat:11.224, lng:72.776 }, area:"3.2 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Island with long sandy beaches and coral reefs.", history:"Fishing and coconut farming community.", floraAndFauna:["Coral reefs","Sea turtles","Lagoon fish","Palm trees","Seabirds"]}, culinaryHighlights:[{dishName:"Coconut Fish Fry",description:"Fresh fish fried with coconut spices"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Snorkeling","Beach"], images:[{url:"https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=800",caption:"Kadmat lagoon"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Kadmat_Island",govtPortal:"https://lakshadweep.gov.in"} },
+  { name:"Kadmat Island", nativeName:"Kadmat", location:{ group:"Lakshadweep", coordinates:{ lat:11.224, lng:72.776 }, area:"3.2 sq km"}, status:{ isInhabited:true, isProtectedArea:false, permitRequired:"Special Permission"}, description:{ summary:"Island with long sandy beaches and coral reefs.", history:"Fishing and coconut farming community.", floraAndFauna:["Coral reefs","Sea turtles","Lagoon fish","Palm trees","Seabirds"]}, culinaryHighlights:[{dishName:"Coconut Fish Fry",description:"Fresh fish fried with coconut spices"}], bestTimeToVisit:{startMonth:"October",endMonth:"March",peakSeason:"December to February"}, vibeTags:["Snorkeling","Beach"], images:[{url:"https://images.unsplash.com/photo-1519046904884-53103b34b206?q=80&w=800",caption:"Long sandy beaches and turquoise reef lagoon of Kadmat Island"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Kadmat_Island",govtPortal:"https://lakshadweep.gov.in"} },
 
-  { name:"Elephanta Island", nativeName:"Gharapuri", location:{ group:"Arabian Sea", coordinates:{ lat:18.9633, lng:72.9315 }, area:"10 sq km"}, status:{ isInhabited:true, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Island near Mumbai known for UNESCO cave temples.", history:"Caves date back to 5th century dedicated to Shiva.", floraAndFauna:["Tropical trees","Monkeys","Birds","Rocky hills","Shrubs"]}, culinaryHighlights:[{dishName:"Street Seafood",description:"Simple fried seafood sold near ferry jetty"}], bestTimeToVisit:{startMonth:"November",endMonth:"March",peakSeason:"January to February"}, vibeTags:["Historical","Architecture"], images:[{url:"https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=800",caption:"Elephanta caves"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Elephanta_Island",govtPortal:"https://maharashtratourism.gov.in"} },
+  { name:"Elephanta Island", nativeName:"Gharapuri", location:{ group:"Arabian Sea", coordinates:{ lat:18.9633, lng:72.9315 }, area:"10 sq km"}, status:{ isInhabited:true, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Island near Mumbai known for UNESCO cave temples.", history:"Caves date back to 5th century dedicated to Shiva.", floraAndFauna:["Tropical trees","Monkeys","Birds","Rocky hills","Shrubs"]}, culinaryHighlights:[{dishName:"Street Seafood",description:"Simple fried seafood sold near ferry jetty"}], bestTimeToVisit:{startMonth:"November",endMonth:"March",peakSeason:"January to February"}, vibeTags:["Historical","Architecture"], images:[{url:"https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=800",caption:"Elephanta Caves – ancient rock-cut Shiva temples, UNESCO heritage"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/Elephanta_Island",govtPortal:"https://maharashtratourism.gov.in"} },
 
-  { name:"St Mary's Island", nativeName:"St Mary's", location:{ group:"Arabian Sea", coordinates:{ lat:13.379, lng:74.673 }, area:"0.5 sq km"}, status:{ isInhabited:false, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Island known for unique basalt rock formations.", history:"Linked to Vasco da Gama landing.", floraAndFauna:["Coastal shrubs","Seabirds","Rock formations","Marine life","Shellfish"]}, culinaryHighlights:[{dishName:"Seafood Fry",description:"Typical coastal Karnataka seafood"}], bestTimeToVisit:{startMonth:"October",endMonth:"February",peakSeason:"December"}, vibeTags:["Geology","Photography"], images:[{url:"https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=800",caption:"Basalt columns"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/St._Mary's_Islands",govtPortal:"https://karnatakatourism.org"} }
+  { name:"St Mary's Island", nativeName:"St Mary's", location:{ group:"Arabian Sea", coordinates:{ lat:13.379, lng:74.673 }, area:"0.5 sq km"}, status:{ isInhabited:false, isProtectedArea:true, permitRequired:"None"}, description:{ summary:"Island known for unique basalt rock formations.", history:"Linked to Vasco da Gama landing.", floraAndFauna:["Coastal shrubs","Seabirds","Rock formations","Marine life","Shellfish"]}, culinaryHighlights:[{dishName:"Seafood Fry",description:"Typical coastal Karnataka seafood"}], bestTimeToVisit:{startMonth:"October",endMonth:"February",peakSeason:"December"}, vibeTags:["Geology","Photography"], images:[{url:"https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=800",caption:"Unique hexagonal basalt columns of St Mary's Island"}], externalLinks:{wikiUrl:"https://en.wikipedia.org/wiki/St._Mary's_Islands",govtPortal:"https://karnatakatourism.org"} }
 
 ];
 
 // ---- Bulk additions (compact helper) ----
+// Each IMG key uses a unique, topically relevant Unsplash photo
 const IMG = {
-  beach: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?q=80&w=800",
-  tropical: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800",
-  lagoon: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800",
-  palm: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800",
-  water: "https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=800",
-  arch: "https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=800",
-  rocks: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=800",
-  jungle: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=800",
-  river: "https://images.unsplash.com/photo-1502784444187-359ac186c5bb?q=80&w=800",
-  fort: "https://images.unsplash.com/photo-1564507592333-c60657eea523?q=80&w=800",
-  village: "https://images.unsplash.com/photo-1518684079-3c830dcef090?q=80&w=800",
+  // Andaman tropical beach – Radhanagar style
+  beach:    "https://images.unsplash.com/photo-1559827260-dc66d52bef19?q=80&w=800",
+  // Dense tropical / rainforest canopy
+  jungle:   "https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=800",
+  // Calm turquoise coral lagoon (aerial)
+  lagoon:   "https://images.unsplash.com/photo-1573843981267-be1999ff37cd?q=80&w=800",
+  // Tropical island with coconut palms and white sand
+  palm:     "https://images.unsplash.com/photo-1519046904884-53103b34b206?q=80&w=800",
+  // Clear shallow water over coral / sea floor
+  water:    "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?q=80&w=800",
+  // Ancient stone temple / carved rock architecture (India context)
+  arch:     "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?q=80&w=800",
+  // Volcanic / dark basalt rocky coastline
+  rocks:    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=800",
+  // Winding river through green landscape
+  river:    "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=800",
+  // Historic coastal sea fort
+  fort:     "https://images.unsplash.com/photo-1564507592333-c60657eea523?q=80&w=800",
+  // Traditional Indian village with huts and greenery
+  village:  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800",
+  // Tropical island from above – atoll / Lakshadweep style
+  tropical: "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?q=80&w=800",
 };
 
 // [name, nativeName, group, lat, lng, area, summary, vibeTags, imgKey, permit]
@@ -286,7 +298,7 @@ const more = [
   ["Smith Island","Smith","Andaman",13.3167,93.0000,"6 sq km","Connected to Ross Island by a sandbar; pristine white beaches.",["Beach","Snorkeling"],"beach","RAP"],
   ["Ross and Smith Islands","Ross & Smith","Andaman",13.3167,93.0000,"7 sq km","Twin islands joined by a natural sand bridge in North Andaman.",["Beach","Photography"],"beach","RAP"],
   ["Interview Island","Interview","Andaman",12.9333,92.7167,"133 sq km","Wildlife sanctuary known for feral elephants.",["Wildlife","Nature"],"jungle","Special Permission"],
-  ["Viper Island","Viper","Andaman",11.6900,92.7100,"0.4 sq km","Historic site of British era gallows near Port Blair.",["Historical"],"arch","None"],
+  ["Viper Island","Viper","Andaman",11.6900,92.7100,"0.4 sq km","Historic site of British era gallows near Port Blair.",["Historical"],"fort","None"],
   ["Cinque Island","Cinque","Andaman",11.2700,92.7300,"9.5 sq km","Marine national park with twin islands joined by a sandbar.",["Scuba","Snorkeling","Beach"],"lagoon","Special Permission"],
   ["North Sentinel of Sisters","Sisters Islands","Andaman",11.5333,92.6333,"0.5 sq km","Two small islands within Mahatma Gandhi Marine National Park.",["Snorkeling","Marine"],"lagoon","Special Permission"],
   ["Brothers Islands","Brothers","Andaman",11.0833,92.7167,"0.5 sq km","Pair of small islands inside Mahatma Gandhi Marine National Park.",["Snorkeling","Marine"],"lagoon","Special Permission"],
@@ -332,7 +344,7 @@ const more = [
 
   // ---------- ARABIAN SEA / WEST COAST (~20) ----------
   ["Vypin Island","Vypin","Arabian Sea",9.9919,76.2317,"27 sq km","Dense backwater island that forms part of Greater Kochi.",["City","Beach"],"water","None"],
-  ["Willingdon Island","Willingdon","Arabian Sea",9.9456,76.2754,"5 sq km","Largest artificial island in India; home to Kochi port and naval base.",["City","Port"],"arch","None"],
+  ["Willingdon Island","Willingdon","Arabian Sea",9.9456,76.2754,"5 sq km","Largest artificial island in India; home to Kochi port and naval base.",["City","Port"],"water","None"],
   ["Bolgatty Island","Bolgatty","Arabian Sea",9.9886,76.2664,"0.5 sq km","Small island in Vembanad lake known for the Bolgatty Palace.",["Heritage","Luxury"],"arch","None"],
   ["Vallarpadam Island","Vallarpadam","Arabian Sea",10.0167,76.2667,"3.5 sq km","Backwater island in Kochi famous for the Vallarpadam church.",["Religion","Port"],"arch","None"],
   ["Bet Dwarka","Bet Dwarka","Arabian Sea",22.4500,69.1167,"13 sq km","Pilgrimage island off the Gujarat coast linked to Lord Krishna.",["Religion","Beach"],"arch","None"],
