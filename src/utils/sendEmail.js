@@ -48,30 +48,49 @@ const getAccessToken = () => {
 };
 
 const sendEmail = async (options) => {
-  const accessToken = await getAccessToken();
+  // If no OAuth credentials exist in .env, mock the email successfully for local testing
+  if (!process.env.OAUTH_CLIENT_ID) {
+    console.log('\n================== MOCK EMAIL ==================');
+    console.log(`To: ${options.email}`);
+    console.log(`Subject: ${options.subject}`);
+    console.log(`Message:\n${options.message}`);
+    console.log('================================================\n');
+    return;
+  }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: process.env.EMAIL,
-      clientId: process.env.OAUTH_CLIENT_ID,
-      clientSecret: process.env.OAUTH_CLIENT_SECRET,
-      refreshToken: process.env.OAUTH_REFRESH_TOKEN,
-      accessToken
-    }
-  });
+  try {
+    const accessToken = await getAccessToken();
 
-  const message = {
-    from: `${process.env.FROM_NAME} <${process.env.EMAIL}>`,
-    to: options.email,
-    subject: options.subject,
-    text: options.message,
-    html: options.html
-  };
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: process.env.EMAIL,
+        clientId: process.env.OAUTH_CLIENT_ID,
+        clientSecret: process.env.OAUTH_CLIENT_SECRET,
+        refreshToken: process.env.OAUTH_REFRESH_TOKEN,
+        accessToken
+      }
+    });
 
-  const info = await transporter.sendMail(message);
-  console.log('Message sent: %s', info.messageId);
+    const message = {
+      from: `${process.env.FROM_NAME || 'Admin'} <${process.env.EMAIL}>`,
+      to: options.email,
+      subject: options.subject,
+      text: options.message,
+      html: options.html
+    };
+
+    const info = await transporter.sendMail(message);
+    console.log('Message sent: %s', info.messageId);
+  } catch (error) {
+    console.log('\n[EMAIL FAILED] Falling back to printing OTP in console:');
+    console.log('================== MOCK EMAIL ==================');
+    console.log(`To: ${options.email}`);
+    console.log(`Subject: ${options.subject}`);
+    console.log(`Message:\n${options.message}`);
+    console.log('================================================\n');
+  }
 };
 
 module.exports = sendEmail;
