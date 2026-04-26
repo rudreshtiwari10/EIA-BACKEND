@@ -25,32 +25,72 @@ function getGenAIInstances() {
   }
   return genAIInstances;
 }
-// Helper: parse AI JSON response
+// Helper: parse AI JSON response with multiple fallback strategies
 function parseAIJson(text, fallback = {}) {
+  if (!text || typeof text !== 'string') return fallback;
+
+  // Strategy 1: Strip markdown fences and parse directly
   try {
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const cleaned = text.replace(/```(?:json)?\n?/g, '').trim();
     return JSON.parse(cleaned);
-  } catch (e) {
-    // Try to find JSON within the text
-    try {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) return JSON.parse(match[0]);
-    } catch (e2) {}
-    return fallback;
-  }
+  } catch (e) { /* continue */ }
+
+  // Strategy 2: Find the outermost balanced braces (not greedy regex)
+  try {
+    const start = text.indexOf('{');
+    if (start !== -1) {
+      let depth = 0;
+      let end = -1;
+      for (let i = start; i < text.length; i++) {
+        if (text[i] === '{') depth++;
+        else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) {
+        return JSON.parse(text.substring(start, end + 1));
+      }
+    }
+  } catch (e2) { /* continue */ }
+
+  // Strategy 3: Try to find an array if the expected shape is array-like
+  try {
+    const arrStart = text.indexOf('[');
+    if (arrStart !== -1) {
+      let depth = 0;
+      let end = -1;
+      for (let i = arrStart; i < text.length; i++) {
+        if (text[i] === '[') depth++;
+        else if (text[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) {
+        const arr = JSON.parse(text.substring(arrStart, end + 1));
+        // Wrap in expected shape if fallback has a known key
+        const keys = Object.keys(fallback);
+        if (keys.length === 1 && Array.isArray(fallback[keys[0]])) {
+          return { [keys[0]]: arr };
+        }
+        return arr;
+      }
+    }
+  } catch (e3) { /* continue */ }
+
+  console.error('parseAIJson: all strategies failed. First 300 chars:', text.substring(0, 300));
+  return fallback;
 }
 
 // ─── Gemini fallback chain ─────────────────────────────────────
 // Cycles through every (key × model) combo so a single exhausted/down
 // bucket never takes the whole system down.
 const MODELS = [
-  'gemini-2.0-flash-lite',  // Highest free capacity
-  'gemini-2.0-flash',       // Primary stable model
-  // NUKED all preview/experimental models — they consistently return 404 model_missing 
-  // on free-tier keys and add ~8 seconds of dead network wait time to the matrix.
+  'gemini-2.5-flash-lite',  // Newest lightweight — separate quota
+  'gemini-2.5-flash',       // Newest stable — separate quota
+  'gemini-2.0-flash-lite',  // High free-tier capacity
+  'gemini-2.0-flash',       // Stable workhorse
+  'gemini-3-flash-preview', // Preview model — separate quota
 ];
 
-const CALL_TIMEOUT_MS = 10_000; // 10s per-attempt ceiling — faster matrix cycling
+// Timeouts: short prompts (feature lists) vs long prompts (full itineraries)
+const TIMEOUT_SHORT_MS = 15_000;  // 15s for simple queries
+const TIMEOUT_LONG_MS  = 45_000;  // 45s for complex itinerary generation
 
 function classifyError(err) {
   const msg = (err?.message || '').toLowerCase();
@@ -59,74 +99,83 @@ function classifyError(err) {
   if (msg.includes('404') || msg.includes('not found') || msg.includes('model not')) return 'model_missing';
   if (msg.includes('timeout') || msg.includes('aborted') || msg.includes('econnreset') || msg.includes('network') || msg.includes('fetch failed')) return 'transient';
   if (msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('unavailable')) return 'server';
+  if (msg.includes('blocked') || msg.includes('safety') || msg.includes('recitation')) return 'content_blocked';
   return 'unknown';
 }
 
-async function callOnce(ai, modelName, prompt) {
+async function callOnce(ai, modelName, prompt, timeoutMs) {
   const model = ai.getGenerativeModel({ model: modelName });
   const gen = model.generateContent(prompt);
   const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('timeout after ' + CALL_TIMEOUT_MS + 'ms')), CALL_TIMEOUT_MS)
+    setTimeout(() => rej(new Error('timeout after ' + timeoutMs + 'ms')), timeoutMs)
   );
   const result = await Promise.race([gen, timeout]);
-  return result.response.text();
+  // Gemini can return a response where text() throws if content was blocked
+  const text = result.response.text();
+  if (!text || text.trim().length === 0) {
+    throw new Error('Empty response from model');
+  }
+  return text;
 }
 
-async function callAI(prompt) {
+/**
+ * @param {string} prompt - The prompt to send
+ * @param {object} [opts] - Options
+ * @param {boolean} [opts.long=false] - Use longer timeout for complex prompts
+ */
+async function callAI(prompt, opts = {}) {
+  const timeoutMs = opts.long ? TIMEOUT_LONG_MS : TIMEOUT_SHORT_MS;
   const instances = getGenAIInstances();
-  const deadKeys = new Set();  // keys marked fatal_key — skip for this call
+  const deadKeys = new Set();       // fatal_key — key itself is invalid
+  const exhausted = new Set();       // track "keyIdx:model" combos that returned 429/404 — never retry these
 
-  // Pass 2 only makes sense for transient errors (network hiccup, server blip).
-  // rate_limit won't clear in 2s, and model_missing is permanent — so if Pass 1
-  // has zero transient errors, we skip Pass 2 entirely and fall through to the
-  // caller's catch block immediately (which serves the fallback response).
-  for (let pass = 1; pass <= 2; pass++) {
-    let hadTransientError = false; // track if retry is worth attempting
+  // Single pass — no Pass 2. Retrying 429s just burns more quota in a death spiral.
+  // Only transient errors (network hiccups) get a single retry via the inner delay.
+  for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
+    if (deadKeys.has(keyIdx)) continue;
+    const ai = instances[keyIdx];
+    const label = `[Key ${keyIdx + 1}/${instances.length}]`;
 
-    for (let keyIdx = 0; keyIdx < instances.length; keyIdx++) {
-      if (deadKeys.has(keyIdx)) continue;
-      const ai = instances[keyIdx];
-      const label = `[Pass ${pass}][Key ${keyIdx + 1}/${instances.length}]`;
+    for (const modelName of MODELS) {
+      const comboKey = `${keyIdx}:${modelName}`;
+      if (exhausted.has(comboKey)) continue;
 
-      for (const modelName of MODELS) {
-        try {
-          const text = await callOnce(ai, modelName, prompt);
-          if (text) {
-            if (pass > 1 || keyIdx > 0) console.log(`${label} ${modelName} ✅ recovered`);
+      try {
+        const text = await callOnce(ai, modelName, prompt, timeoutMs);
+        if (keyIdx > 0) console.log(`${label} ${modelName} ✅ recovered`);
+        return text;
+      } catch (err) {
+        const kind = classifyError(err);
+        console.log(`${label} ${modelName} ❌ ${kind}: ${(err.message || '').substring(0, 120)}`);
+
+        if (kind === 'fatal_key') {
+          deadKeys.add(keyIdx);
+          break; // entire key is invalid
+        }
+        if (kind === 'rate_limit' || kind === 'model_missing') {
+          exhausted.add(comboKey); // don't ever retry this combo
+          continue;
+        }
+        if (kind === 'content_blocked') {
+          continue; // try next model
+        }
+        if (kind === 'transient' || kind === 'server' || kind === 'unknown') {
+          // One quick retry after a short pause for transient issues
+          await new Promise(r => setTimeout(r, 1000));
+          try {
+            const text = await callOnce(ai, modelName, prompt, timeoutMs);
+            console.log(`${label} ${modelName} ✅ recovered on retry`);
             return text;
-          }
-        } catch (err) {
-          const kind = classifyError(err);
-          console.log(`${label} ${modelName} ❌ ${kind}: ${(err.message || '').substring(0, 140)}`);
-
-          if (kind === 'fatal_key') {
-            deadKeys.add(keyIdx);
-            break; // skip remaining models for this key
-          }
-          if (kind === 'rate_limit' || kind === 'model_missing') {
-            continue; // next model — same key, rate limits don't recover in 2s
-          }
-          if (kind === 'transient' || kind === 'server' || kind === 'unknown') {
-            hadTransientError = true; // pass 2 is worth attempting
-            await new Promise(r => setTimeout(r, 300));
+          } catch (retryErr) {
+            console.log(`${label} ${modelName} ❌ retry failed: ${(retryErr.message || '').substring(0, 120)}`);
             continue;
           }
         }
       }
     }
-
-    // Only do Pass 2 if there were transient errors that might have cleared
-    if (pass === 1) {
-      if (!hadTransientError) {
-        console.log('Pass 1: all failures are rate_limit/model_missing — skipping Pass 2, serving fallback immediately.');
-        break; // jump straight to caller's catch
-      }
-      console.log('Pass 1 exhausted with transient errors, waiting 2s and retrying...');
-      await new Promise(r => setTimeout(r, 2000));
-    }
   }
 
-  throw new Error('All API keys and models exhausted after 2 full passes');
+  throw new Error('All API keys and models exhausted');
 }
 
 // Helper: resolve multiple islands from IDs
@@ -244,21 +293,29 @@ Return exactly 8 real properties ranging from budget (500/night) to luxury (2000
     console.log('[ACCOMMODATION] AI responded successfully');
     let parsed = parseAIJson(text, { accommodations: [] });
 
-    if (parsed.accommodations) {
-      parsed.accommodations = parsed.accommodations.map(acc => ({
-        ...acc,
-        totalCost: acc.pricePerNight * nights,
-        nights,
-        totalPax,
-      }));
+    // Normalize: AI might return under different keys
+    let accList = parsed.accommodations || parsed.results || parsed.hotels || parsed.properties || parsed.data;
+    if (!Array.isArray(accList)) {
+      for (const key of Object.keys(parsed)) {
+        if (Array.isArray(parsed[key]) && parsed[key].length > 0) { accList = parsed[key]; break; }
+      }
     }
+    accList = Array.isArray(accList) ? accList : [];
+
+    const accommodations = accList.map(acc => ({
+      ...acc,
+      pricePerNight: acc.pricePerNight || acc.price_per_night || acc.price || 3000,
+      totalCost: (acc.pricePerNight || acc.price_per_night || acc.price || 3000) * nights,
+      nights,
+      totalPax,
+    }));
 
     res.status(200).json({
       success: true,
       data: {
         islands: islandNames,
         nights,
-        ...parsed,
+        accommodations,
       },
     });
   } catch (err) {
@@ -324,15 +381,21 @@ Return a JSON object (no markdown, no code blocks, just pure JSON):
     const text = await callAI(prompt);
     let parsed = parseAIJson(text, { results: [], note: 'Could not find matching properties.' });
 
-    if (parsed.results) {
-      parsed.results = parsed.results.map(acc => ({
-        ...acc,
-        totalCost: acc.pricePerNight * nights,
-        nights,
-      }));
+    // Normalize: AI might use different key names
+    let results = parsed.results || parsed.hotels || parsed.properties || parsed.accommodations || [];
+    if (!Array.isArray(results)) {
+      for (const key of Object.keys(parsed)) {
+        if (Array.isArray(parsed[key]) && parsed[key].length > 0) { results = parsed[key]; break; }
+      }
     }
+    results = (Array.isArray(results) ? results : []).map(acc => ({
+      ...acc,
+      pricePerNight: acc.pricePerNight || acc.price_per_night || acc.price || 3000,
+      totalCost: (acc.pricePerNight || acc.price_per_night || acc.price || 3000) * nights,
+      nights,
+    }));
 
-    res.status(200).json({ success: true, data: parsed });
+    res.status(200).json({ success: true, data: { results, note: parsed.note || '' } });
   } catch (err) {
     console.error('Hotel Search Error:', err.message);
     res.status(200).json({
@@ -411,12 +474,19 @@ Rules:
     const text = await callAI(prompt);
     let parsed = parseAIJson(text, { activities: [], dining: [], estimatedDailyFoodCost: { budget: 600, standard: 1200, luxury: 2500 } });
 
+    // Normalize: AI might use different key names
+    const activities = parsed.activities || parsed.things_to_do || parsed.thingsToDo || [];
+    const dining = parsed.dining || parsed.restaurants || parsed.food || parsed.eateries || [];
+    const estimatedDailyFoodCost = parsed.estimatedDailyFoodCost || parsed.estimated_daily_food_cost || parsed.dailyFoodCost || { budget: 600, standard: 1200, luxury: 2500 };
+
     res.status(200).json({
       success: true,
       data: {
         islands: islandNames,
         days: nights,
-        ...parsed,
+        activities: Array.isArray(activities) ? activities : [],
+        dining: Array.isArray(dining) ? dining : [],
+        estimatedDailyFoodCost,
       },
     });
   } catch (err) {
@@ -566,24 +636,20 @@ Return a JSON object (no markdown, no code blocks, ONLY pure JSON):
   let aiItinerary = { dayPlan: [], suggestions: {}, travelWarnings: [] };
 
   try {
-    const text = await callAI(prompt);
+    const text = await callAI(prompt, { long: true });
     
     console.log('AI Itinerary raw length:', text.length);
     
     aiItinerary = parseAIJson(text, aiItinerary);
-    
+
+    // Normalize: AI might use different key names for the day plan
     if (!aiItinerary.dayPlan || aiItinerary.dayPlan.length === 0) {
-      console.error('AI returned empty dayPlan. Raw text (first 500 chars):', text.substring(0, 500));
-      // Try a second parse attempt — sometimes AI wraps in extra objects
-      try {
-        const innerMatch = text.match(/\{[\s\S]*"dayPlan"[\s\S]*\}/);
-        if (innerMatch) {
-          aiItinerary = JSON.parse(innerMatch[0]);
-        }
-      } catch (e2) {
-        console.error('Second parse attempt failed:', e2.message);
-        aiItinerary = buildFallbackItinerary(islands, nights, selectedActivities);
-      }
+      aiItinerary.dayPlan = aiItinerary.day_plan || aiItinerary.days || aiItinerary.itinerary || aiItinerary.plan || [];
+    }
+
+    if (!Array.isArray(aiItinerary.dayPlan) || aiItinerary.dayPlan.length === 0) {
+      console.error('AI returned no usable dayPlan. Keys:', Object.keys(aiItinerary), 'Raw (first 500):', text.substring(0, 500));
+      aiItinerary = buildFallbackItinerary(islands, nights, selectedActivities);
     }
   } catch (err) {
     console.error('AI Itinerary Error:', err.message);
@@ -1001,11 +1067,43 @@ Return ONLY pure JSON (no markdown, no prose), matching exactly:
   try {
     const text = await callAI(prompt);
     const parsed = parseAIJson(text, { features: [] });
-    if (Array.isArray(parsed.features)) freshFeatures = parsed.features.slice(0, needed);
+
+    // The AI might return data under different keys — normalize it
+    let items = null;
+    if (Array.isArray(parsed.features) && parsed.features.length > 0) {
+      items = parsed.features;
+    } else if (Array.isArray(parsed.results) && parsed.results.length > 0) {
+      items = parsed.results;
+    } else if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+      items = parsed.items;
+    } else if (Array.isArray(parsed.data) && parsed.data.length > 0) {
+      items = parsed.data;
+    } else {
+      // Last resort: find the first array value in the parsed object
+      for (const key of Object.keys(parsed)) {
+        if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+          items = parsed[key];
+          break;
+        }
+      }
+    }
+
+    if (items && items.length > 0) {
+      // Normalize each item to ensure required fields exist
+      freshFeatures = items.slice(0, needed).map(item => ({
+        name: item.name || item.title || 'Unknown',
+        description: item.description || item.details || item.summary || '',
+        rating: parseFloat(item.rating) || 4.0,
+        priceRange: item.priceRange || item.price_range || item.price || 'N/A',
+        tags: Array.isArray(item.tags) ? item.tags : (Array.isArray(item.categories) ? item.categories : [featureType]),
+        imageKeyword: item.imageKeyword || item.image_keyword || item.searchKeyword || `${featureType} India`,
+      }));
+    } else {
+      console.error(`AI returned no usable array for ${islandName}/${featureType}. Keys:`, Object.keys(parsed), 'Raw (first 500):', text.substring(0, 500));
+    }
   } catch (err) {
     console.error('AI Feature Fetch Error:', err.message);
     if (existing.length > offset) {
-      // Cache partially covers the request — return what we have rather than 503
       return res.status(200).json({
         success: true,
         data: existing.slice(offset),
